@@ -120,10 +120,27 @@ services:
     networks:
       - app-network
 
+  prometheus:
+    image: prom/prometheus:latest
+
+    ports:
+      - "9090:9090"
+
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro,Z
+      - prometheus-data:/prometheus
+
+    depends_on:
+      - api
+
+    networks:
+      - app-network
+
 volumes:
   rabbitmq-data:
   postgres-data:
   ollama-data:
+  prometheus-data:
 
 networks:
   app-network:

@@ -1,19 +1,69 @@
 import json
 import os
+import time
 import uuid
 from uuid import UUID
 
 import pika
 import psycopg
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    Counter,
+    Histogram,
+    generate_latest,
+)
 from psycopg.rows import dict_row
 from pydantic import BaseModel
 
 app = FastAPI(title="AI Inference Platform API")
 
 
+HTTP_REQUESTS_TOTAL = Counter(
+    "http_requests_total",
+    "Total number of HTTP requests",
+    ["method", "path", "status_code"],
+)
+
+HTTP_REQUEST_DURATION_SECONDS = Histogram(
+    "http_request_duration_seconds",
+    "HTTP request duration in seconds",
+    ["method", "path"],
+)
+
+JOBS_CREATED_TOTAL = Counter(
+    "jobs_created_total",
+    "Total number of inference jobs created",
+)
+
+
 class JobRequest(BaseModel):
     prompt: str
+
+
+@app.middleware("http")
+async def observe_requests(request: Request, call_next):
+    start_time = time.perf_counter()
+
+    response = await call_next(request)
+
+    duration = time.perf_counter() - start_time
+
+    route = request.scope.get("route")
+    path = getattr(route, "path", request.url.path)
+
+    HTTP_REQUESTS_TOTAL.labels(
+        method=request.method,
+        path=path,
+        status_code=str(response.status_code),
+    ).inc()
+
+    HTTP_REQUEST_DURATION_SECONDS.labels(
+        method=request.method,
+        path=path,
+    ).observe(duration)
+
+    return response
 
 
 def get_database_connection():
@@ -75,6 +125,14 @@ def health():
     }
 
 
+@app.get("/metrics")
+def metrics():
+    return Response(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST,
+    )
+
+
 @app.post("/jobs")
 def create_job(request: JobRequest):
     job_id = uuid.uuid4()
@@ -82,14 +140,16 @@ def create_job(request: JobRequest):
     with get_database_connection() as connection, connection.cursor() as cursor:
         cursor.execute(
             """
-                INSERT INTO jobs (id, prompt, status)
-                VALUES (%s, %s, 'PENDING')
-                """,
+            INSERT INTO jobs (id, prompt, status)
+            VALUES (%s, %s, 'PENDING')
+            """,
             (
                 job_id,
                 request.prompt,
             ),
         )
+
+    JOBS_CREATED_TOTAL.inc()
 
     job = {
         "id": str(job_id),
@@ -133,17 +193,17 @@ def get_job(job_id: UUID):
     with get_database_connection() as connection, connection.cursor() as cursor:
         cursor.execute(
             """
-                SELECT
-                    id,
-                    prompt,
-                    status,
-                    result,
-                    error,
-                    created_at,
-                    updated_at
-                FROM jobs
-                WHERE id = %s
-                """,
+            SELECT
+                id,
+                prompt,
+                status,
+                result,
+                error,
+                created_at,
+                updated_at
+            FROM jobs
+            WHERE id = %s
+            """,
             (job_id,),
         )
 
