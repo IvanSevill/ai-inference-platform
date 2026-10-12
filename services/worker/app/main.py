@@ -3,6 +3,7 @@ import os
 import socket
 
 import pika
+import psycopg
 import requests
 
 WORKER_NAME = socket.gethostname()
@@ -18,10 +19,47 @@ OLLAMA_MODEL = os.getenv(
 )
 
 
+def get_database_connection():
+    return psycopg.connect(
+        host=os.getenv("POSTGRES_HOST", "postgres"),
+        port=int(os.getenv("POSTGRES_PORT", "5432")),
+        dbname=os.getenv("POSTGRES_DB", "ai_platform"),
+        user=os.getenv("POSTGRES_USER", "platform"),
+        password=os.getenv("POSTGRES_PASSWORD", "platformpass"),
+    )
+
+
+def update_job_status(job_id, status, result=None, error=None):
+    with get_database_connection() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            """
+                UPDATE jobs
+                SET status = %s,
+                    result = %s,
+                    error = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+            (
+                status,
+                result,
+                error,
+                job_id,
+            ),
+        )
+
+
 def process_job(job):
+    job_id = job["id"]
+
     print(
-        f"[{WORKER_NAME}] Processing job {job['id']}",
+        f"[{WORKER_NAME}] Processing job {job_id}",
         flush=True,
+    )
+
+    update_job_status(
+        job_id,
+        "PROCESSING",
     )
 
     response = requests.post(
@@ -36,7 +74,13 @@ def process_job(job):
 
     response.raise_for_status()
 
-    result = response.json()
+    result = response.json()["response"]
+
+    update_job_status(
+        job_id,
+        "COMPLETED",
+        result=result,
+    )
 
     print(
         f"[{WORKER_NAME}] Prompt: {job['prompt']}",
@@ -44,12 +88,12 @@ def process_job(job):
     )
 
     print(
-        f"[{WORKER_NAME}] Response: {result['response']}",
+        f"[{WORKER_NAME}] Response: {result}",
         flush=True,
     )
 
     print(
-        f"[{WORKER_NAME}] Finished job {job['id']}",
+        f"[{WORKER_NAME}] Finished job {job_id}",
         flush=True,
     )
 
@@ -80,9 +124,9 @@ channel.basic_qos(
 
 
 def callback(ch, method, properties, body):
-    try:
-        job = json.loads(body)
+    job = json.loads(body)
 
+    try:
         process_job(job)
 
         ch.basic_ack(
@@ -91,9 +135,22 @@ def callback(ch, method, properties, body):
 
     except Exception as error:
         print(
-            f"[{WORKER_NAME}] Job failed: {error}",
+            f"[{WORKER_NAME}] Job {job['id']} failed: {error}",
             flush=True,
         )
+
+        try:
+            update_job_status(
+                job["id"],
+                "FAILED",
+                error=str(error),
+            )
+
+        except Exception as database_error:
+            print(
+                f"[{WORKER_NAME}] Could not update job status: {database_error}",
+                flush=True,
+            )
 
         ch.basic_nack(
             delivery_tag=method.delivery_tag,
