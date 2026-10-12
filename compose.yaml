@@ -1,8 +1,63 @@
 services:
-  # Services will be added progressively.
-  #
-  # The first milestone should stay intentionally small:
-  # API -> queue -> worker
-  #
-  # We will introduce networks, volumes and healthchecks
-  # as each concept is studied.
+  api:
+    build:
+      context: ./services/api
+
+    ports:
+      - "8000:8000"
+
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: platform
+      RABBITMQ_PASSWORD: platformpass
+
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+    networks:
+      - app-network
+
+  rabbitmq:
+    image: rabbitmq:4-management
+
+    ports:
+      - "15672:15672"
+
+    environment:
+      RABBITMQ_DEFAULT_USER: platform
+      RABBITMQ_DEFAULT_PASS: platformpass
+
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    networks:
+      - app-network
+
+  worker:
+    build:
+      context: ./services/worker
+
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: platform
+      RABBITMQ_PASSWORD: platformpass
+
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+    networks:
+      - app-network
+
+volumes:
+  rabbitmq-data:
+
+networks:
+  app-network:
