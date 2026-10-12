@@ -136,11 +136,32 @@ services:
     networks:
       - app-network
 
+  grafana:
+    image: grafana/grafana:latest
+
+    ports:
+      - "3000:3000"
+
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro,Z
+
+    depends_on:
+      - prometheus
+
+    networks:
+      - app-network
+
 volumes:
   rabbitmq-data:
   postgres-data:
   ollama-data:
   prometheus-data:
+  grafana-data:
 
 networks:
   app-network:
