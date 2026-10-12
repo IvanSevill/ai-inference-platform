@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: AI Inference Platform
+    orgId: 1
+    folder: AI Inference Platform
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 10
+
+    options:
+      path: /var/lib/grafana/dashboards
