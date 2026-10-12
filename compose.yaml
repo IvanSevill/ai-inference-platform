@@ -78,6 +78,9 @@ services:
     build:
       context: ./services/worker
 
+    expose:
+      - "9100"
+
     environment:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_USER: ${RABBITMQ_USER}
@@ -132,6 +135,7 @@ services:
 
     depends_on:
       - api
+      - worker
 
     networks:
       - app-network
