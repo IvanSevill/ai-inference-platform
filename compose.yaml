@@ -1,0 +1,8 @@
+services:
+  # Services will be added progressively.
+  #
+  # The first milestone should stay intentionally small:
+  # API -> queue -> worker
+  #
+  # We will introduce networks, volumes and healthchecks
+  # as each concept is studied.
