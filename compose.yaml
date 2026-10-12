@@ -49,8 +49,14 @@ services:
       RABBITMQ_USER: platform
       RABBITMQ_PASSWORD: platformpass
 
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: llama3.2:1b
+
     depends_on:
       rabbitmq:
+        condition: service_healthy
+
+      ollama:
         condition: service_healthy
 
     networks:
