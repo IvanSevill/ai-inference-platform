@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: ConfigMap
+
+metadata:
+  name: ollama-config
+
+data:
+  OLLAMA_MODEL: llama3.2:1b
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+
+metadata:
+  name: ollama-data
+
+spec:
+  accessModes:
+    - ReadWriteOnce
+
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: ollama
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: ollama
+
+  template:
+    metadata:
+      labels:
+        app: ollama
+
+    spec:
+      containers:
+        - name: ollama
+          image: ollama/ollama@sha256:8262851b2846b87c649eddf3e76beb270c52f4d1bc94559f47efde16b0841551
+
+          ports:
+            - containerPort: 11434
+
+          volumeMounts:
+            - name: ollama-data
+              mountPath: /root/.ollama
+
+      volumes:
+        - name: ollama-data
+          persistentVolumeClaim:
+            claimName: ollama-data
+
+---
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: ollama
+
+spec:
+  selector:
+    app: ollama
+
+  ports:
+    - port: 11434
+      targetPort: 11434
+
+  type: ClusterIP
